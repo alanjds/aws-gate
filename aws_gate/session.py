@@ -28,6 +28,9 @@ class Session:
         # terminate session
         self.terminate()
 
+    def __del__(self):
+        self.terminate()
+
     def create(self):
         logger.debug('Creating a new session on instance: %s (%s)', self._instance_id, self._region_name)
         self._response = self._ssm.start_session(Target=self._instance_id)
