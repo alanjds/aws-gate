@@ -43,21 +43,24 @@ class Session:
         response = self._ssm.terminate_session(SessionId=self._session_id)
         logger.debug('Received response: %s', response)
 
-    def open(self):
+    def open(self, opener=subprocess.check_call, opener_kwargs={}):
         with deferred_signals():
             try:
                 logger.debug('Executing session-manager-plugin')
-                subprocess.check_call(['session-manager-plugin',
-                                       json.dumps(self._response),
-                                       self._region_name,
-                                       'StartSession'])
-                logger.debug('session-manager plugin finished successfully')
+                return opener([
+                    'session-manager-plugin',
+                    json.dumps(self._response),
+                    self._region_name,
+                    'StartSession',
+                ], **opener_kwargs)
+                logger.debug('session-manager plugin executed successfully')
             except OSError as ex:
                 if ex.errno == errno.ENOENT:
                     raise ValueError('session-manager-plugin cannot be found')
 
 
-def session(config, instance_name, profile_name='default', region_name='eu-west-1'):
+def session(config, instance_name, profile_name='default', region_name='eu-west-1',
+            opener=subprocess.check_call, opener_kwargs={}):    # yapf: disable
     if not is_existing_profile(profile_name):
         raise ValueError('Invalid profile provided: {}'.format(profile_name))
 
@@ -82,5 +85,11 @@ def session(config, instance_name, profile_name='default', region_name='eu-west-
         raise ValueError('No instance could be found for name: {}'.format(instance))
 
     logger.info('Opening session on instance %s (%s) via profile %s', instance_id, region_name, profile_name)
-    with Session(instance_id, region_name=region_name, ssm=ssm) as sess:
-        sess.open()
+    sess = Session(instance_id, region_name=region_name, ssm=ssm)
+    sess.create()
+    opened = sess.open(opener=opener, opener_kwargs=opener_kwargs)
+    try:
+        opened._SSM_SESSION_HOLDER = sess  # 'opened' could be a Popen() or a tuple()
+    except AttributeError:
+        pass
+    return opened
